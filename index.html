@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TIC · TAC · TOE</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #050810;
+      --surface:   #0d1117;
+      --border:    #1e2d40;
+      --x-color:   #00f0ff;
+      --o-color:   #ff3e6c;
+      --win-glow:  #ffe400;
+      --text:      #c8d6e5;
+      --muted:     #4a5568;
+      --grid-line: #1a2a3a;
+    }
+
+    body {
+      font-family: 'Orbitron', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ── Animated scanline background ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0,240,255,0.015) 2px,
+          rgba(0,240,255,0.015) 4px
+        );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Floating grid dots ── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(circle, rgba(0,240,255,0.08) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+      animation: drift 20s linear infinite;
+    }
+
+    @keyframes drift {
+      from { background-position: 0 0; }
+      to   { background-position: 40px 40px; }
+    }
+
+    /* ── Glow orbs ── */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.18;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .orb-1 { width: 400px; height: 400px; background: var(--x-color); top: -100px; left: -100px; animation: float1 8s ease-in-out infinite; }
+    .orb-2 { width: 350px; height: 350px; background: var(--o-color); bottom: -80px; right: -80px; animation: float2 10s ease-in-out infinite; }
+
+    @keyframes float1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(40px,30px)} }
+    @keyframes float2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-30px,-40px)} }
+
+    /* ── Main wrapper ── */
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+      padding: 24px 16px;
+    }
+
+    /* ── Title ── */
+    .title {
+      font-size: clamp(1.4rem, 5vw, 2.4rem);
+      font-weight: 900;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, var(--x-color), #a78bfa, var(--o-color));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 18px rgba(0,240,255,0.4));
+    }
+
+    /* ── Score board ── */
+    .scoreboard {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .score-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 12px 22px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      min-width: 90px;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .score-card.active-x { border-color: var(--x-color); box-shadow: 0 0 18px rgba(0,240,255,0.25); }
+    .score-card.active-o { border-color: var(--o-color); box-shadow: 0 0 18px rgba(255,62,108,0.25); }
+
+    .score-label {
+      font-size: 0.62rem;
+      letter-spacing: 0.15em;
+      color: var(--muted);
+      font-family: 'Share Tech Mono', monospace;
+    }
+    .score-sym { font-size: 1.4rem; font-weight: 900; line-height: 1; }
+    .score-sym.x { color: var(--x-color); text-shadow: 0 0 12px var(--x-color); }
+    .score-sym.o { color: var(--o-color); text-shadow: 0 0 12px var(--o-color); }
+    .score-num { font-size: 1.5rem; font-weight: 700; font-family: 'Share Tech Mono', monospace; }
+
+    .vs-badge {
+      font-size: 0.75rem;
+      letter-spacing: 0.2em;
+      color: var(--muted);
+      font-family: 'Share Tech Mono', monospace;
+    }
+
+    /* ── Status message ── */
+    .status {
+      font-size: clamp(0.75rem, 3vw, 0.95rem);
+      letter-spacing: 0.12em;
+      color: var(--text);
+      font-family: 'Share Tech Mono', monospace;
+      height: 1.6em;
+      transition: color 0.3s;
+      text-align: center;
+    }
+    .status.win  { color: var(--win-glow); text-shadow: 0 0 14px var(--win-glow); }
+    .status.draw { color: var(--muted); }
+
+    /* ── Grid ── */
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      width: min(340px, 90vw);
+      height: min(340px, 90vw);
+      position: relative;
+    }
+
+    /* Draw the inner grid lines only (not outer border) */
+    .board::before,
+    .board::after {
+      content: '';
+      position: absolute;
+      background: var(--grid-line);
+      box-shadow: 0 0 8px rgba(0,240,255,0.15);
+    }
+    .board::before { /* vertical lines */
+      width: 2px;
+      height: 100%;
+      top: 0;
+      left: calc(100%/3);
+      box-shadow: calc(100%/3 * 2 - calc(100%/3)) 0 0 rgba(0,240,255,0.15), 0 0 8px rgba(0,240,255,0.15);
+      /* Use box-shadow trick for both vertical lines */
+    }
+    .board::after { /* horizontal lines */
+      height: 2px;
+      width: 100%;
+      left: 0;
+      top: calc(100%/3);
+      box-shadow: 0 calc(100%/3) 0 var(--grid-line);
+    }
+
+    /* fake lines via pseudo on container */
+    .grid-lines {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .grid-lines span {
+      position: absolute;
+      background: linear-gradient(90deg, transparent, var(--grid-line), transparent);
+      box-shadow: 0 0 10px rgba(0,240,255,0.12);
+    }
+    .grid-lines span:nth-child(1) { width: 2px; height: 100%; left: calc(100%/3); top: 0; background: var(--grid-line); }
+    .grid-lines span:nth-child(2) { width: 2px; height: 100%; left: calc(200%/3); top: 0; background: var(--grid-line); }
+    .grid-lines span:nth-child(3) { height: 2px; width: 100%; top: calc(100%/3); left: 0; background: var(--grid-line); }
+    .grid-lines span:nth-child(4) { height: 2px; width: 100%; top: calc(200%/3); left: 0; background: var(--grid-line); }
+
+    .cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: clamp(2.4rem, 10vw, 4rem);
+      font-weight: 900;
+      position: relative;
+      z-index: 1;
+      transition: background 0.15s;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .cell:hover:not(.taken) {
+      background: rgba(255,255,255,0.03);
+    }
+
+    /* Symbol rendering */
+    .cell[data-val="X"]::after {
+      content: 'X';
+      color: var(--x-color);
+      text-shadow: 0 0 20px var(--x-color), 0 0 40px rgba(0,240,255,0.5);
+      animation: pop 0.25s cubic-bezier(0.175,0.885,0.32,1.275) both;
+    }
+    .cell[data-val="O"]::after {
+      content: 'O';
+      color: var(--o-color);
+      text-shadow: 0 0 20px var(--o-color), 0 0 40px rgba(255,62,108,0.5);
+      animation: pop 0.25s cubic-bezier(0.175,0.885,0.32,1.275) both;
+    }
+    .cell.win-cell[data-val="X"]::after { text-shadow: 0 0 30px var(--win-glow), 0 0 60px var(--win-glow); color: var(--win-glow); }
+    .cell.win-cell[data-val="O"]::after { text-shadow: 0 0 30px var(--win-glow), 0 0 60px var(--win-glow); color: var(--win-glow); }
+
+    @keyframes pop {
+      0%   { transform: scale(0) rotate(-15deg); opacity: 0; }
+      100% { transform: scale(1) rotate(0deg);   opacity: 1; }
+    }
+
+    /* ── Win line overlay ── */
+    .win-line {
+      position: absolute;
+      background: linear-gradient(90deg, transparent, var(--win-glow), transparent);
+      border-radius: 4px;
+      box-shadow: 0 0 20px var(--win-glow), 0 0 40px rgba(255,228,0,0.4);
+      z-index: 2;
+      pointer-events: none;
+      animation: lineDraw 0.4s ease forwards;
+      transform-origin: center;
+    }
+
+    @keyframes lineDraw { from { opacity:0; transform: scaleX(0); } to { opacity:1; transform: scaleX(1); } }
+
+    /* ── Buttons ── */
+    .btn-row { display: flex; gap: 12px; }
+
+    .btn {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      padding: 12px 28px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(0,240,255,0.08), transparent);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { border-color: var(--x-color); color: var(--x-color); box-shadow: 0 0 16px rgba(0,240,255,0.2); }
+    .btn:hover::before { opacity: 1; }
+    .btn:active { transform: scale(0.96); }
+
+    .btn.reset { border-color: var(--o-color); }
+    .btn.reset:hover { color: var(--o-color); box-shadow: 0 0 16px rgba(255,62,108,0.2); }
+    .btn.reset::before { background: linear-gradient(135deg, rgba(255,62,108,0.08), transparent); }
+
+    /* ── Draws counter ── */
+    .draws-row {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+    }
+
+    /* ── Flash animation on win ── */
+    @keyframes flash { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .status.win { animation: flash 0.8s ease 3; }
+
+    /* ── Responsive ── */
+    @media (max-width: 400px) {
+      .score-card { padding: 10px 14px; min-width: 75px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div class="wrapper">
+  <div class="title">Tic · Tac · Toe</div>
+
+  <div class="scoreboard">
+    <div class="score-card active-x" id="card-x">
+      <div class="score-label">PLAYER 1</div>
+      <div class="score-sym x">X</div>
+      <div class="score-num" id="score-x">0</div>
+    </div>
+    <div class="vs-badge">VS</div>
+    <div class="score-card" id="card-o">
+      <div class="score-label">PLAYER 2</div>
+      <div class="score-sym o">O</div>
+      <div class="score-num" id="score-o">0</div>
+    </div>
+  </div>
+
+  <div class="status" id="status">PLAYER X — YOUR MOVE</div>
+
+  <!-- Board -->
+  <div class="board" id="board">
+    <div class="grid-lines">
+      <span></span><span></span><span></span><span></span>
+    </div>
+    <div class="cell" data-index="0"></div>
+    <div class="cell" data-index="1"></div>
+    <div class="cell" data-index="2"></div>
+    <div class="cell" data-index="3"></div>
+    <div class="cell" data-index="4"></div>
+    <div class="cell" data-index="5"></div>
+    <div class="cell" data-index="6"></div>
+    <div class="cell" data-index="7"></div>
+    <div class="cell" data-index="8"></div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="btn-next">NEXT ROUND</button>
+    <button class="btn reset" id="btn-reset">RESET ALL</button>
+  </div>
+
+  <div class="draws-row">DRAWS: <span id="draws">0</span></div>
+</div>
+
+<script>
+  const WINS = [
+    [0,1,2],[3,4,5],[6,7,8], // rows
+    [0,3,6],[1,4,7],[2,5,8], // cols
+    [0,4,8],[2,4,6]           // diags
+  ];
+
+  let board = Array(9).fill('');
+  let current = 'X';
+  let gameOver = false;
+  let scores = { X:0, O:0, D:0 };
+
+  const cells   = document.querySelectorAll('.cell');
+  const status  = document.getElementById('status');
+  const scoreX  = document.getElementById('score-x');
+  const scoreO  = document.getElementById('score-o');
+  const draws   = document.getElementById('draws');
+  const cardX   = document.getElementById('card-x');
+  const cardO   = document.getElementById('card-o');
+  const boardEl = document.getElementById('board');
+
+  function setStatus(msg, cls='') {
+    status.className = 'status ' + cls;
+    status.textContent = msg;
+  }
+
+  function updateTurnUI() {
+    cardX.className = 'score-card' + (current==='X' ? ' active-x' : '');
+    cardO.className = 'score-card' + (current==='O' ? ' active-o' : '');
+    setStatus(`PLAYER ${current} — YOUR MOVE`);
+  }
+
+  function checkWin() {
+    for (const [a,b,c] of WINS) {
+      if (board[a] && board[a]===board[b] && board[a]===board[c]) {
+        return [a,b,c];
+      }
+    }
+    return null;
+  }
+
+  function drawWinLine(combo) {
+    const [a,,c] = combo;
+    const cellSize = boardEl.offsetWidth / 3;
+    const padding  = cellSize * 0.15;
+
+    const ax = (a % 3) * cellSize + cellSize/2;
+    const ay = Math.floor(a/3) * cellSize + cellSize/2;
+    const cx = (c % 3) * cellSize + cellSize/2;
+    const cy = Math.floor(c/3) * cellSize + cellSize/2;
+
+    const dx = cx - ax, dy = cy - ay;
+    const len = Math.hypot(dx, dy) + padding*2;
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+    const mx = (ax+cx)/2, my = (ay+cy)/2;
+
+    const line = document.createElement('div');
+    line.className = 'win-line';
+    line.style.cssText = `
+      width:${len}px; height:4px;
+      left:${mx - len/2}px; top:${my - 2}px;
+      transform:rotate(${angle}deg);
+    `;
+    boardEl.appendChild(line);
+  }
+
+  function handleClick(e) {
+    const cell = e.currentTarget;
+    const i = +cell.dataset.index;
+    if (board[i] || gameOver) return;
+
+    board[i] = current;
+    cell.setAttribute('data-val', current);
+    cell.classList.add('taken');
+
+    const won = checkWin();
+    if (won) {
+      gameOver = true;
+      won.forEach(idx => cells[idx].classList.add('win-cell'));
+      drawWinLine(won);
+      scores[current]++;
+      scoreX.textContent = scores.X;
+      scoreO.textContent = scores.O;
+      setStatus(`🏆 PLAYER ${current} WINS!`, 'win');
+      cardX.className = 'score-card';
+      cardO.className = 'score-card';
+    } else if (board.every(v=>v)) {
+      gameOver = true;
+      scores.D++;
+      draws.textContent = scores.D;
+      setStatus('— DRAW — WELL PLAYED', 'draw');
+      cardX.className = 'score-card';
+      cardO.className = 'score-card';
+    } else {
+      current = current==='X' ? 'O' : 'X';
+      updateTurnUI();
+    }
+  }
+
+  function nextRound() {
+    board = Array(9).fill('');
+    gameOver = false;
+    // don't reset current — loser goes next (keeps current)
+    cells.forEach(c => {
+      c.removeAttribute('data-val');
+      c.classList.remove('taken','win-cell');
+    });
+    // remove win line
+    boardEl.querySelectorAll('.win-line').forEach(l=>l.remove());
+    updateTurnUI();
+  }
+
+  function resetAll() {
+    scores = { X:0, O:0, D:0 };
+    scoreX.textContent = 0;
+    scoreO.textContent = 0;
+    draws.textContent  = 0;
+    current = 'X';
+    nextRound();
+  }
+
+  cells.forEach(c => c.addEventListener('click', handleClick));
+  document.getElementById('btn-next').addEventListener('click', nextRound);
+  document.getElementById('btn-reset').addEventListener('click', resetAll);
+
+  updateTurnUI();
+</script>
+</body>
+</html>
